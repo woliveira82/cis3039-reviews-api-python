@@ -1,0 +1,9 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "COSMOS_ENDPOINT": "https://reviews-dev-YOUR_UID-cosmos.documents.azure.com:443/",
+    "COSMOS_DATABASE_ID": "reviews-db",
+    "COSMOS_CONTAINER_ID": "reviews"
+  }
+}
