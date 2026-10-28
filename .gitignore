@@ -29,7 +29,7 @@ appsettings.json
 
 # Local python packages
 .python_packages/
-.ruff_cache/
+.ruff_cache
 
 # Python Environments
 .env
@@ -49,3 +49,10 @@ __pycache__/
 __blobstorage__
 __queuestorage__
 __azurite_db*__.json
+
+# Terraform (state files contain secrets such as COSMOS_KEY)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
