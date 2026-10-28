@@ -116,12 +116,11 @@ Container, including when using Windows as the host computer.
 The declared environment uses:
 
 - `ghcr.io/tpdavison/devops-labs:2026-latest`
-- Python `3.12` (pinned in `.python-version`)
+- Python `3.14` (pinned in `.python-version`)
 - [uv](https://docs.astral.sh/uv/) for dependency and environment management
 - Azure Functions runtime/Core Tools `4.x`
 
-The Dev Container adds Python 3.12 and uv as features and runs `uv sync` after
-creation. The container image tag is intentionally floating, so inspect the
+Install uv in the container if it is missing, then run `uv sync`. The container image tag is intentionally floating, so inspect the
 installed versions when diagnosing a later difference.
 
 ```sh
@@ -649,9 +648,24 @@ it is unchanged. Do not reseed test after the verification title edit below.
 ## Create the test Function App
 
 Deploy only after completing Part C and verifying the test seed target. The
-following creates a Linux Consumption Function App using Azure Functions runtime
-4 and Python 3.12. Python 3.12 matches this repository's `.python-version` and is
-supported by runtime 4 on Linux Consumption.
+following creates a Flex Consumption Function App using Azure Functions runtime
+4 and Python 3.14. Python 3.14 matches this repository's `.python-version`; Linux
+Consumption does not support Python 3.13 or later, so this app uses Flex
+Consumption. Check that your region offers it:
+
+```sh
+az functionapp list-flexconsumption-runtimes \
+  --location YOUR_REGION --runtime python --output table
+```
+
+[`infra/main.tf`](infra/main.tf) provisions the same resources (and the Cosmos
+application settings below) with Terraform as an alternative to these commands:
+
+```sh
+export TF_VAR_cosmos_key="$COSMOS_KEY"   # the test account key
+terraform -chdir=infra init
+terraform -chdir=infra apply
+```
 
 Function App hostnames and storage-account names are globally unique. The
 hosting Storage account is distinct from either Cosmos account. Its name must
@@ -677,29 +691,21 @@ az functionapp create \
   --name reviews-test-YOUR_UID-func \
   --resource-group reviews-test-YOUR_UID-rg \
   --storage-account YOUR_TEST_STORAGE_ACCOUNT \
-  --consumption-plan-location YOUR_REGION \
-  --os-type Linux \
+  --flex-consumption-location YOUR_REGION \
   --runtime python \
-  --runtime-version 3.12 \
-  --functions-version 4 \
+  --runtime-version 3.14 \
   --https-only true \
-  --output none
-
-az functionapp config set \
-  --name reviews-test-YOUR_UID-func \
-  --resource-group reviews-test-YOUR_UID-rg \
-  --linux-fx-version 'Python|3.12' \
   --output none
 ```
 
 Verify the explicit runtime before deployment:
 
 ```sh
-az functionapp config show \
+az functionapp show \
   --name reviews-test-YOUR_UID-func \
   --resource-group reviews-test-YOUR_UID-rg \
-  --query linuxFxVersion \
-  --output tsv
+  --query 'properties.functionAppConfig.runtime' \
+  --output json
 
 az functionapp show \
   --name reviews-test-YOUR_UID-func \
@@ -708,7 +714,7 @@ az functionapp show \
   --output tsv
 ```
 
-Expect `Python|3.12` and HTTPS enabled.
+Expect runtime `python` version `3.14` and HTTPS enabled.
 
 ## Configure Azure application settings
 
@@ -736,8 +742,6 @@ az functionapp config appsettings set \
   --name reviews-test-YOUR_UID-func \
   --resource-group reviews-test-YOUR_UID-rg \
   --settings \
-    FUNCTIONS_EXTENSION_VERSION='~4' \
-    FUNCTIONS_WORKER_RUNTIME='python' \
     COSMOS_ENDPOINT='YOUR_TEST_COSMOS_ENDPOINT' \
     COSMOS_DATABASE_ID='reviews-db' \
     COSMOS_CONTAINER_ID='reviews' \
@@ -745,8 +749,12 @@ az functionapp config appsettings set \
   --output none
 ```
 
+Flex Consumption sets the runtime and extension version from the app's
+configuration and rejects `FUNCTIONS_WORKER_RUNTIME` and
+`FUNCTIONS_EXTENSION_VERSION` as application settings, so they are not set here.
+
 Changing application settings restarts the app. List the names, then inspect only
-the explicitly whitelisted non-secret target values and extension version:
+the explicitly whitelisted non-secret target values:
 
 ```sh
 az functionapp config appsettings list \
@@ -760,16 +768,10 @@ for setting in COSMOS_ENDPOINT COSMOS_DATABASE_ID COSMOS_CONTAINER_ID; do
     --resource-group reviews-test-YOUR_UID-rg \
     --query "[?name=='$setting'].{settingName:name,value:value}" --output table
 done
-
-az functionapp config appsettings list \
-  --name reviews-test-YOUR_UID-func \
-  --resource-group reviews-test-YOUR_UID-rg \
-  --query "[?name=='FUNCTIONS_EXTENSION_VERSION'].value" --output tsv
 ```
 
-Check all six relevant names: `FUNCTIONS_EXTENSION_VERSION`,
-`FUNCTIONS_WORKER_RUNTIME`, `COSMOS_ENDPOINT`, `COSMOS_DATABASE_ID`,
-`COSMOS_CONTAINER_ID` and `COSMOS_KEY`. Check extension version `~4`, the actual
+Check all five relevant names: `AzureWebJobsStorage`, `COSMOS_ENDPOINT`,
+`COSMOS_DATABASE_ID`, `COSMOS_CONTAINER_ID` and `COSMOS_KEY`. Check the actual
 test account endpoint, database `reviews-db` and container `reviews`. Never
 display credentials or an unfiltered settings response. Names alone do not prove
 values or database connectivity; the deployed GET below checks connectivity.
@@ -1017,7 +1019,7 @@ local or GitHub project.
 | Local host configuration missing | Create the minimal pre-Part C `local.settings.json`, or copy and edit the template after Part C; retain `FUNCTIONS_WORKER_RUNTIME=python`. The standalone loader's optional file rule does not configure Core Tools. |
 | Local host warns about storage | For this HTTP-only exercise, verify the actual GET response; POST is supplementary. Azurite is not required. Storage-trigger readiness is a separate concern. |
 | Part C missing-configuration checkpoint | Keep the minimal B4 host file, unset the three target variables in the dev-key shell, start and actually GET. Expect generic 500 and a safe `dependency-construction` stage before copying the template. |
-| Deployment returns 500 | Check the six setting names, extension version `~4`, whitelisted non-secret target values, `Python|3.12`, test target existence and safe Function logs. A `dependency-construction` stage suggests configuration; a `use-case-execution` stage can include connectivity or stored-data failure. The public 500 intentionally omits details. Never dump secrets or the unfiltered settings response. |
+| Deployment returns 500 | Check the five setting names, whitelisted non-secret target values, runtime `python` `3.14`, test target existence and safe Function logs. A `dependency-construction` stage suggests configuration; a `use-case-execution` stage can include connectivity or stored-data failure. The public 500 intentionally omits details. Never dump secrets or the unfiltered settings response. |
 | Region provisioning fails | Recheck the subscription, provider registration, inherited policy and serverless availability. |
 
 Current command syntax is based on the official
