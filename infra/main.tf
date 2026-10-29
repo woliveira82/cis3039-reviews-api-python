@@ -13,7 +13,7 @@
 # The state stores the Cosmos and storage keys, so keep *.tfstate out of Git.
 
 locals {
-  subscription_id = "316bb7db-3c11-4533-9127-e7a6610a2c98"
+  subscription_id = "<YOUR OWN SUBSCRIPTION ID>"
   location        = "uksouth"
 
   resource_group_name       = "reviews-test-<YOUR ID>-rg"
