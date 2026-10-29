@@ -3,7 +3,7 @@
 # Flex Consumption instead of `az functionapp create --consumption-plan-location`.
 # Terraform creates the infrastructure only; publish the code afterwards with:
 #
-#   func azure functionapp publish reviews-test-ab47-func
+#   func azure functionapp publish reviews-test-<YOUR ID>-func
 #
 # Usage:
 #   export TF_VAR_cosmos_key="$TEST_COSMOS_KEY"
@@ -11,20 +11,20 @@
 #   terraform -chdir=infra apply
 
 locals {
-  subscription_id = "316bb7db-3c11-4533-9127-e7a6610a2c98"
+  subscription_id = "<YOUR OWN SUBSCRIPTION ID>"
   location        = "uksouth"
 
-  resource_group_name       = "reviews-test-ab47-rg"
-  storage_account_name      = "reviewstestab47funcstore"
+  resource_group_name       = "reviews-test-<YOUR ID>-rg"
+  storage_account_name      = "reviewstest<YOUR ID>funcstore"
   deployment_container_name = "app-package"
-  service_plan_name         = "reviews-test-ab47-plan"
-  function_app_name         = "reviews-test-ab47-func"
+  service_plan_name         = "reviews-test-<YOUR ID>-plan"
+  function_app_name         = "reviews-test-<YOUR ID>-func"
 
   python_version         = "3.14"
   instance_memory_in_mb  = 2048
   maximum_instance_count = 40
 
-  cosmos_endpoint     = "https://reviews-test-ab47-cosmos.documents.azure.com:443/"
+  cosmos_endpoint     = "https://reviews-test-<YOUR ID>-cosmos.documents.azure.com:443/"
   cosmos_database_id  = "reviews-db"
   cosmos_container_id = "reviews"
 }
