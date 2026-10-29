@@ -658,13 +658,18 @@ az functionapp list-flexconsumption-runtimes \
   --location YOUR_REGION --runtime python --output table
 ```
 
-[`infra/main.tf`](infra/main.tf) provisions the same resources (and the Cosmos
-application settings below) with Terraform as an alternative to these commands:
+[`infra/main.tf`](infra/main.tf) provisions the whole test environment with
+Terraform as an alternative to the CLI commands in this guide: the serverless
+Cosmos account, `reviews-db` database and `/id`-partitioned `reviews` container,
+the Function App and its storage, and the Cosmos application settings below
+(wired directly to the new account, so no key needs to be passed in). Use it
+instead of the test-provisioning `az` commands, not as well as them:
 
 ```sh
-export TF_VAR_cosmos_key="$COSMOS_KEY"   # the test account key
 terraform -chdir=infra init
 terraform -chdir=infra apply
+export COSMOS_KEY="$(terraform -chdir=infra output -raw cosmos_key)"
+terraform -chdir=infra output -raw cosmos_endpoint
 ```
 
 Function App hostnames and storage-account names are globally unique. The

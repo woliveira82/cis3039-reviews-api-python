@@ -1,40 +1,35 @@
-# Provisions the test Function App for the Reviews API (Python 3.14, Flex
-# Consumption). Linux Consumption does not support Python 3.13+, so this uses
+# Provisions the test environment for the Reviews API: a serverless Cosmos DB
+# account with its database and container, and a Python 3.14 Function App on
+# Flex Consumption. Linux Consumption does not support Python 3.13+, so this uses
 # Flex Consumption instead of `az functionapp create --consumption-plan-location`.
-# Terraform creates the infrastructure only; publish the code afterwards with:
+# Terraform creates the infrastructure only; seed and publish afterwards with:
 #
-#   func azure functionapp publish reviews-test-ab47-func
+#   func azure functionapp publish reviews-test-<YOUR ID>-func
 #
 # Usage:
-#   export TF_VAR_cosmos_key="$TEST_COSMOS_KEY"
 #   terraform -chdir=infra init
 #   terraform -chdir=infra apply
+#
+# The state stores the Cosmos and storage keys, so keep *.tfstate out of Git.
 
 locals {
   subscription_id = "316bb7db-3c11-4533-9127-e7a6610a2c98"
   location        = "uksouth"
 
-  resource_group_name       = "reviews-test-ab47-rg"
-  storage_account_name      = "reviewstestab47funcstore"
+  resource_group_name       = "reviews-test-<YOUR ID>-rg"
+  storage_account_name      = "reviewstest<YOUR ID>funcstore"
   deployment_container_name = "app-package"
-  service_plan_name         = "reviews-test-ab47-plan"
-  function_app_name         = "reviews-test-ab47-func"
+  service_plan_name         = "reviews-test-<YOUR ID>-plan"
+  function_app_name         = "reviews-test-<YOUR ID>-func"
 
   python_version         = "3.14"
   instance_memory_in_mb  = 2048
   maximum_instance_count = 40
 
-  cosmos_endpoint     = "https://reviews-test-ab47-cosmos.documents.azure.com:443/"
-  cosmos_database_id  = "reviews-db"
-  cosmos_container_id = "reviews"
-}
-
-# The account key is the only secret, so it is supplied at apply time instead
-# of being committed: export TF_VAR_cosmos_key="$TEST_COSMOS_KEY".
-variable "cosmos_key" {
-  description = "Primary key of the test Cosmos DB account."
-  type        = string
-  sensitive   = true
+  cosmos_account_name        = "reviews-test-<YOUR ID>-cosmos"
+  cosmos_database_id         = "reviews-db"
+  cosmos_container_id        = "reviews"
+  cosmos_partition_key_paths = ["/id"]
 }
 
 terraform {
@@ -56,6 +51,50 @@ provider "azurerm" {
 resource "azurerm_resource_group" "rg" {
   name     = local.resource_group_name
   location = local.location
+}
+
+# az cosmosdb create --kind GlobalDocumentDB --capabilities EnableServerless
+#   --default-consistency-level Session
+#   --locations regionName=uksouth failoverPriority=0 isZoneRedundant=False
+resource "azurerm_cosmosdb_account" "cosmos" {
+  name                = local.cosmos_account_name
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = azurerm_resource_group.rg.location
+  offer_type          = "Standard"
+  kind                = "GlobalDocumentDB"
+
+  # The app authenticates with the account key, so key auth must stay enabled.
+  local_authentication_enabled = true
+
+  capabilities {
+    name = "EnableServerless"
+  }
+
+  consistency_policy {
+    consistency_level = "Session"
+  }
+
+  geo_location {
+    location          = azurerm_resource_group.rg.location
+    failover_priority = 0
+    zone_redundant    = false
+  }
+}
+
+# az cosmosdb sql database create
+resource "azurerm_cosmosdb_sql_database" "reviews" {
+  name                = local.cosmos_database_id
+  resource_group_name = azurerm_resource_group.rg.name
+  account_name        = azurerm_cosmosdb_account.cosmos.name
+}
+
+# az cosmosdb sql container create --partition-key-path '/id'
+resource "azurerm_cosmosdb_sql_container" "reviews" {
+  name                = local.cosmos_container_id
+  resource_group_name = azurerm_resource_group.rg.name
+  account_name        = azurerm_cosmosdb_account.cosmos.name
+  database_name       = azurerm_cosmosdb_sql_database.reviews.name
+  partition_key_paths = local.cosmos_partition_key_paths
 }
 
 # az storage account create --sku Standard_LRS
@@ -107,13 +146,23 @@ resource "azurerm_function_app_flex_consumption" "func" {
 
   site_config {}
 
-  # az functionapp config appsettings set
+  # az functionapp config appsettings set, wired to the account created above.
   app_settings = {
-    COSMOS_ENDPOINT     = local.cosmos_endpoint
-    COSMOS_DATABASE_ID  = local.cosmos_database_id
-    COSMOS_CONTAINER_ID = local.cosmos_container_id
-    COSMOS_KEY          = var.cosmos_key
+    COSMOS_ENDPOINT     = azurerm_cosmosdb_account.cosmos.endpoint
+    COSMOS_DATABASE_ID  = azurerm_cosmosdb_sql_database.reviews.name
+    COSMOS_CONTAINER_ID = azurerm_cosmosdb_sql_container.reviews.name
+    COSMOS_KEY          = azurerm_cosmosdb_account.cosmos.primary_key
   }
+}
+
+output "cosmos_endpoint" {
+  value = azurerm_cosmosdb_account.cosmos.endpoint
+}
+
+# Read with: export COSMOS_KEY="$(terraform -chdir=infra output -raw cosmos_key)"
+output "cosmos_key" {
+  value     = azurerm_cosmosdb_account.cosmos.primary_key
+  sensitive = true
 }
 
 output "function_app_name" {
